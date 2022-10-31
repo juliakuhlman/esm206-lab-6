@@ -1,0 +1,259 @@
+---
+title: "Professional descriptive title"
+author: "C.L. Jerde"
+date: "2022-10-30"
+output: 
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,message=FALSE,warning = FALSE,results=FALSE)
+library(tidyverse)
+library(here)
+library(ggpubr) # for some graphic applications that extend ggplot2
+library(car) # for some ANOVA and regression tests 
+library(janitor)
+library(pander)
+library(knitr)
+library(kableExtra)
+```
+
+# Lab 6: R Markdown techniques, more plots, ANOVA, Multiple comparisons, non-parametric tests, and introduction to linear regression
+
+This week's lab will cover a lot of material. We will be showing some new R markdown tools that need to be used for assignment 3. Additionally, we will be moving quickly through the assumptions and additional tests used with ANOVA.
+
+We will be using the penguins data file. Make sure to have this loaded into your data file.
+
+### Part 1: R Markdown techniques (Nathan)
+
+Moved to lecture on Wednesday.
+
+1. Change YAML header to include code folding
+
+2. Add `message=FALSE` and `warning=FALSE` to set up chunk options. These suppress messages and warnings that pop up from running code. Never want to include these in final reports, unless demonstrating warnings in a particular code.
+
+3. Using code chunks to make figure captions and settings
+
+    a. Best chunking practices
+    
+       i. Name the chunk. If you start using Bookdown, you can reference the figure direct and include links that bring the user back to the figure
+       
+       ii. Run only the code that plots the graph in that chunk
+       
+       iii. Use `fig.cap` chunk option to write out the caption so it always moves with the graph.
+    
+    b. Always provide complete, articulate captions so that anyone can understand the graph even if they don't read the complete report.
+    
+4. Tables and output in R
+
+    a. `kable()` from knitr combined with `kableExtra()` package is the easiest introduction to showing tables in Rmarkdown outputs. There are dozens of different packages and tools to do tables. I will include a list of cool ones.
+    
+    b. kable requires dataframes and tibbles. Works best with tidyverse and tidymodel outputs. Make sure to convert desired objects to a tibble before putting into code
+
+5. Report outputs inline with R
+
+    a. Sometimes we just need to report a single value. We can do that using `` `r knitr::inline_expr("type code here")` `` in the middle of writing to show single values like p-values.
+
+### Part 2: Plots and ANOVA assumptions
+
+*Data:* We will again work with the penguins data.
+
+```{r}
+penguins <- read_csv(here("data","penguins.csv"))
+```
+
+We are interested in only a subset of the penguins data. For lab this week we are interested in looking at the mass distribution of male penguins.
+
+```{r}
+penguins_males <- penguins %>%
+  filter(sex=="male") %>%
+  select(species, body_mass_g)
+```
+
+*Visual Inspection* In our tool box so far, we can make a couple of visual inspection figures and get some summary statistics. Because ANOVA relies on the assumption of normality, let us focus on the qq-plots for visual inspection. You should also consider histograms and summary statistics.
+
+```{r}
+# qq plots for each species of penguin
+adelie <- penguins_males %>% filter(species=="Adelie")
+chinstrap <- penguins_males %>% filter(species=="Chinstrap")
+gentoo <- penguins_males %>% filter(species=="Gentoo")
+
+
+#qq plot of male body mass for Adelie species
+qq_adelie <- ggplot(adelie, aes(sample = body_mass_g)) + geom_qq() +stat_qq() + stat_qq_line() + theme_bw() + labs(title="Adelie")
+
+#qq plot of male body mass for Chinstrap species
+qq_chinstrap <- ggplot(chinstrap, aes(sample = body_mass_g)) + geom_qq() +stat_qq() + stat_qq_line() + theme_bw() + labs(title="Chinstrap")
+
+#qq plot of male body mass for Gentoo species
+qq_gentoo <- ggplot(gentoo, aes(sample = body_mass_g)) + geom_qq() +stat_qq() + stat_qq_line() + theme_bw() + labs(title="Gentoo")
+```
+
+*Combine three figures into one* Since we have three individual figures, we may want to organize them into one figure. Here is a way using the ggpubr package.
+
+```{r cols, fig.align='center', fig.cap="Figure 1. QQplots demonstrating normality of penguin bodymasses. Adelie (A) and Gentoo (C) demonstrate clear normality through the linearity of the QQplots. Chinstrap (B) have slightly weaker linearity, but sufficient for normality assumption"}
+# As a row
+ggarrange(qq_adelie, qq_chinstrap, qq_gentoo, 
+          labels = c("A", "B", "C"),
+          ncol = 3, nrow = 1)
+```
+
+```{r pengrow, fig.align='center',fig.cap="Figure 2. Same QQplots for penguin bodymass, but demonstrating horizontal arrangement of ggarrange"}
+# As a column
+ggarrange(qq_adelie, qq_chinstrap, qq_gentoo, 
+          labels = c("A", "B", "C"),
+          ncol = 1, nrow = 3)
+```
+
+*Statistically testing for normality* We can also be much more rigorous in testing for normality. For smaller data sets, less than 50 observations, we can use the Shapiro-Wilk's method. The SW method is also robust for larger samples sizes. If the p-value is less than your defined alpha, we reject the null that data are normally distributed in favor that they are from a different distribution. There is also a common distribution test called Kruskal Wallis test, and it has more flexibility to test the data for other data distributions and can be useful, but it comes with more complexity than we need for ANOVA and linear regression assumption testing. Please explore as you have time.
+
+```{r}
+shapiro.test(adelie$body_mass_g)
+shapiro.test(chinstrap$body_mass_g)
+shapiro.test(gentoo$body_mass_g)
+```
+
+What do we conclude?
+
+*Testing for equal variances* One of the other assumptions for running an ANOVA is equal variances, but as we discussed in class, we can violate this assumption. However, we can formally test it statistically and report the outcome for our clients or readership. If the p-value is less than our defined alpha threshold, then we reject the null that the variances are equal.
+
+```{r}
+#Levene's test
+leveneTest(body_mass_g ~ as.factor(species), data = penguins_males)
+
+lev_test=leveneTest(body_mass_g ~ as.factor(species), data = penguins_males)
+colnames(lev_test)<-c("df","fval","pval")
+
+```
+
+What do we conclude?
+
+Often times we don't need to show a whole table and only focus on one key element. We can use inline coding to include the results. For example, we would conclude in our write up: 
+
+*Penguin body masses posses equal variances as the null hypothesis was not rejected from a Levene Test for Homogenity of Variance (p-value=`r round(lev_test$pval[1],2)`) *
+
+### Part 3a: ANOVA
+
+Now we can get on to the statistical test of interest, the ANOVA. The null hypothesis for our study is that the mean body mass of each penguin species is the same versus the alternative that at least one of the means is different.
+
+```{r aovtab, results=TRUE}
+m_penguin_species_results <- aov(body_mass_g ~ as.factor(species), data = penguins_males) # note this is the same formulation as for the leveneTest command
+
+anov_tab=summary.aov(m_penguin_species_results)[[1]]
+row.names(anov_tab)<-c("Species","Residuals")
+
+options(knitr.kable.NA = '') #Make blank space instead
+kable(anov_tab,digits = 2,caption = "Table 1. ANOVA analysis comparing the differences in means between 3 penguin species (Adelie, Gentoo, and Chinstrap)") %>% 
+  kable_classic()
+```
+
+What do we conclude?
+
+### Part 3b: Multiple comparisons
+
+The ANOVA has tested for equivalence of the means. However, if we have found significance, which penguin species have differences? This is the purpose of multiple comparison testing.
+
+```{r}
+TukeyHSD(m_penguin_species_results)
+```
+
+What do we conclude? Sometimes it is best to visualize the data before doing the TukeyHSD test.
+
+### Part 3c: Plotting ANOVA for publication and presentation
+
+As we explored with t-test and exploratory data analysis of a single variable, there are many ways to look at data. Here is a common way to show single factor ANOVA results.
+
+Using the ggpubr package we can plot the means of each species with the 95% confidence intervals
+
+```{r}
+# Mean plots
+ggline(penguins_males, x = "species", y = "body_mass_g", main = "Means and 95% CI for three species of penguins",
+       add = c("mean_ci"), color = "dark gray",
+       ylab = "Body Mass (g)", xlab = "Species", point.color = "black")
+```
+
+Does this figure match with what we found statistically using the ANOVA and the Tukey HSD?
+
+### Part 4: Non-parametric tests
+
+Let's assume something is "wonky" with the penguin data, such as we suspect the observations not to be normally distributed or one of the group's variances is 5x larger than another group's. We could do non-parametric testing. The ANOVA analog in the non-parametric analysis is called a Kruskal-Wallis test. Let us perform the same male penguin body mass test non-parametrically! Note, the "guts" of the command are exactly the same as we used for the aov() command.
+
+```{r}
+kruskal.test(body_mass_g ~ as.factor(species), data = penguins_males)
+```
+
+What do we conclude? Is it consistent with ANOVA?
+
+We can also do non-parametric pairwise comparisons analogous to Tukey HSD by looking at pairwise Wilcox tests that have been adjusted for multiple comparisons (continuity correction). Here we have used the easiest correction, Bonferroni, where the p-value from the pairwise test is multiplied by the number of comparisons. In this case there are 3 multiple comparisons.
+
+```{r}
+pairwise.wilcox.test(penguins_males$body_mass_g, penguins_males$species,
+                 p.adjust.method = "bonferroni")
+```
+
+What do we conclude and is it different from the Tukey HSD multiple comparisons?
+
+Since non-parametric evaluations are largely based on comparing medians instead of means, it is suggested that you plot the results using box plots instead of means and 95% confidence intervals as done parameterically. Here is some example code of the boxplot comparison.
+
+```{r}
+ggboxplot(penguins_males, x = "species", y = "body_mass_g")
+```
+
+ANOVA can become much more complicated with additional factors and interactions between factors. For an excellent tutorial on multifactor ANOVA with R, please work through this module: <http://www.sthda.com/english/wiki/two-way-anova-test-in-r>
+
+### Part 5: Intro to linear regression
+
+The focus of lab 7 will be linear regression and multiple linear regression. Here we will begin our exploration with some plotting and "simple" analysis. This example is from: https://www.rforecology.com/post/how-to-do-simple-linear-regression-in-r/
+
+One of the most common and useful analyses you will learn about and use is simple linear regression. The practical use if for understanding how some dependent variable changes as a function of a an independent variable.  Let us start with an ecology example.  Tree height can be vary hard to measure so many foresters and scientists use a metric of diameter at breast height (DBH, 4.5 feet from the ground).  This way, the person in the field can quickly measure the diameter and understand the distribution of tree heights in an area.  Of course this can be dependent on things like the tree species, so we often want to compare the quick measure (DBH) to some accurately measured tree heights.  The data provided in tree_mod.csv are for 31 black cherry trees that were measured for DBH and then felled to obtain accurate measures of height and volume.  Here is a link to a full description: https://r-data.pmagunia.com/dataset/r-dataset-package-datasets-trees
+
+Note DBH is named Girth as a variable of interest. 
+```{r}
+trees_mod <- read_csv(here("data","trees_mod.csv"))
+
+# Let us use janitor() and clean up the names
+trees <- trees_mod %>% clean_names()
+
+#take a look at the first six rows of data
+head(trees)
+
+#Note that the girth is DBH and is measured in inches, height is measured in feet, and volume is measured in cubic feet.  
+```
+
+We could start with summary statistics (please do if you want), but for the lab, let us start with a scatter plot of the girth (aka the DBH) on the y axis and the height on the x axis.
+
+```{r}
+tree_scatter<-ggplot(trees, aes(x=height, y=girth))+geom_point()+labs(x="Height (ft.)", y="DBH (in.)")+xlim(60,90)+ylim(0,25)+theme_bw()
+
+tree_scatter
+```
+
+Does there appear to be a trend? How can we tell?  
+
+The package ggplot2 comes with many tools to investigate trends and relationships. But we are keenly interested in describing a potentially linear relationship.  We can start by fitting a linear model using ordinary least squares (OLS).  And then we can fit that line to our data.  We will do a lot more in-depth discussion in class this week.
+
+```{r}
+#fit a linear model (linear regression)
+model_1 <- lm(girth ~ height, data=trees)
+model_1
+summary(model_1)
+```
+
+How do we interpret this output?  
+What is the formula for the line? 
+
+Quick plot the model and the data
+```{r}
+tree_scatter2<-ggplot(trees, aes(x=height, y=girth)) + geom_point() + labs(x="Height (ft.)", y="DBH (in.)")+xlim(60,90)+ylim(0,25) + geom_smooth(method = "lm")+ theme_bw() 
+
+
+tree_scatter2
+```
+
+What do you conclude about the linear regression?  Is Height a significant variable explaining DBH?
+
+
+
+
+
