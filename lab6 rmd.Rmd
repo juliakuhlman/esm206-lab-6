@@ -1,0 +1,162 @@
+---
+title: "Lab 6"
+author: "J. Kuhlman"
+date: "2022-10-31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(here)
+library(janitor)
+library(ggpubr)
+library(car)
+```
+
+# Lab 6
+
+## Part 1: R Markdown Techniques
+Moved to lecture on Wed so we can focus on understanding stat output today
+
+## Part 2: Plots and ANOVA Assumptions
+```{r, message=FALSE}
+penguins<-read_csv((here("data","penguins.csv")))
+```
+
+Subset of the penguin data
+```{r}
+penguins_males<-penguins %>% 
+  filter(sex=="male") %>% 
+  select(species, body_mass_g)
+```
+
+*Visual Inspection*
+```{r}
+#break out the data
+adelie <- penguins_males %>% filter(species=="Adelie")
+chinstrap <- penguins_males %>% filter(species=="Chinstrap")
+gentoo <- penguins_males %>% filter(species=="Gentoo")
+
+#qqplots
+qq_adelie <- ggplot(adelie, aes(sample=body_mass_g))+geom_qq()+
+  stat_qq()+stat_qq_line()+
+  theme_bw() + labs(title="Adelie")
+qq_adelie
+
+qq_chinstrap <- ggplot(chinstrap, aes(sample=body_mass_g))+geom_qq()+
+  stat_qq()+stat_qq_line()+
+  theme_bw() + labs(title="Chinstrap")
+qq_chinstrap
+
+qq_gentoo <- ggplot(gentoo, aes(sample=body_mass_g))+geom_qq()+
+  stat_qq()+stat_qq_line()+
+  theme_bw() + labs(title="Gentoo")
+qq_gentoo
+```
+*Combine three figures into one*
+```{r}
+#as a row of figures
+ggarrange(qq_adelie, qq_chinstrap, qq_gentoo, labels=c("A","B","C"), ncol=3, nrow=1)
+
+#as a column of figures
+ggarrange(qq_adelie, qq_chinstrap, qq_gentoo, labels=c("A","B","C"), ncol=1, nrow=3)
+
+#there are ways to customize the look of these - struggle with data and formatting for clarity!
+```
+
+### Critical Test for Normality
+```{r}
+shapiro.test(adelie$body_mass_g)
+#underlying hypothesis: data are normally distributed; alternative hypothesis: not normal. With alpha of .05, and p-value of .416, we fail to reject the null, and data are normally distributed
+
+shapiro.test(chinstrap$body_mass_g)
+
+shapiro.test(gentoo$body_mass_g)
+```
+
+Critical part of ANOVA is also equal variance:
+*test of equal variances*
+```{r}
+#levene's test:
+leveneTest(body_mass_g~as.factor(species), data=penguins_males) #we fail to reject that the variances of all 3 penguins are about the same
+```
+
+## Part 3a: ANOVA
+```{r}
+m_penguin_species_results <- aov(body_mass_g~as.factor(species), data=penguins_males)
+m_penguin_species_results #this just runs the calcs, but doesn't include the p-val. for that, call the results:
+summary(m_penguin_species_results)
+#conclude means across the three species are not all the same b/c less than 0.05 threshold
+```
+
+## Part 3b: Multiple Comparisons
+```{r}
+TukeyHSD(m_penguin_species_results)
+#looks at the different p-values, pair-wise comparison between all possible combinations. Tukey says you have 3 comparisons, we'll adjust the p-value (p/3) to account for multiple combos
+#.299 - means are relatively the same; gentoo and adelie are different, gentoo and chinstrap are different btwn p vals are so small. Let the stats guide, then verify. 
+```
+
+*New Plot to Show ANOVA*
+```{r}
+ggline(penguins_males, x="species", y="body_mass_g", main="Means and 95% CI for three species of penguins", add = c("mean_ci"), color="dark gray", ylab = "Body Mass (g)", xlab = "Species", point.color = "black")
+```
+
+## Part 4: Non parametric tests
+
+```{r}
+# Kruskal test
+kruskal.test(body_mass_g~as.factor(species), data=penguins_males)
+#h naught: medians are the same. p value is very small, so we conclude that we reject the null hypothesis that the medians are all the same
+```
+*pairwise comparisons*
+```{r}
+pairwise.wilcox.test(penguins_males$body_mass_g, penguins_males$species, p.adjust.method = "bonferroni")
+#bonferroni is simple adjustment. divide by 3. 
+#we conclude we fail to reject adelie and chinstrap p-values. Use non-parametrics when you have skewed data, median is more effective than mean in skewed comparisons
+```
+
+*box plot*
+```{r}
+ggboxplot(penguins_males, x = "species", y = "body_mass_g")
+```
+
+## Part 5: Intro to Linear Regression
+*data*
+```{r}
+trees_mod<-read.csv(here("data", "trees_mod.csv"))
+
+trees<-trees_mod %>% clean_names()
+
+head(trees)
+```
+
+### Scatterplot of data
+```{r}
+tree_scatter<-ggplot(trees, aes(x=height, y=girth))+geom_point()+
+  labs(x="Height (ft)", y="DBH (in)") + xlim(60,90) + ylim(0,25) + theme_bw() #DBH "Diamerter at Breast Height"
+tree_scatter
+```
+
+*linear models*
+```{r}
+model_1 <- lm(girth~height, data=trees)
+model_1
+
+summary(model_1)
+#height p val shows that there's a significant slope to the data. This
+```
+
+*Plot the Linear Model*
+
+```{r}
+tree_scatter<-ggplot(trees, aes(x=height, y=girth))+geom_point()+
+  labs(x="Height (ft)", y="DBH (in)") + xlim(60,90) + ylim(0,25) + theme_bw() + #DBH "Diameter at Breast Height"
+  geom_smooth(method="lm")
+tree_scatter
+```
+
